@@ -1,0 +1,53 @@
+Namespaces:
+  =: io.murano.apps
+  std: io.murano
+  res: io.murano.resources
+  sys: io.murano.system
+
+
+Name: ZabbixAgent
+
+Extends: std:Application
+
+Properties:
+  name:
+    Contract: $.string().notNull()
+  instance:
+    Contract: $.class(res:Instance).notNull()
+  server:
+    Contract: $.class(ZabbixServer).notNull()
+
+
+Workflow:
+  initialize:
+    Body:
+      - $.environment: $.find(std:Environment).require()
+
+  deploy:
+    Body:
+      - $.environment.reporter.report($this, 'Ensuring Zabbix Server is deployed.')
+
+#      - If: not $.getAttr(server, floatingIpAddress)
+#        Then:
+      - $.server.run()
+
+      - $resources: new(sys:Resources)
+      - $.environment.reporter.report($this, 'Creating VM for Zabbix Agent')
+      - $securityGroupIngress:
+          - ToPort: 10050
+            FromPort: 10050
+            IpProtocol: tcp
+            External: True
+      - $.environment.securityGroupManager.addGroupIngress($securityGroupIngress)
+      - $.instance.deploy()
+
+      - $template: $resources.yaml('DeployZabbixAgent.template').bind(dict(
+            password => $.server.password,
+            server => $.server.instance.floatingIpAddress,
+            hostname => $.server.hostname,
+            username => $.server.username
+          ))
+      - $.environment.reporter.report($this, 'Deploying Zabbix Agent')
+      - $.instance.agent.call($template, $resources)
+      - $.environment.reporter.report($this, 'Zabbix Agent is installed')
+

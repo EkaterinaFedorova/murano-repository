@@ -1,0 +1,57 @@
+Namespaces:
+  =: io.murano.apps
+  std: io.murano
+  res: io.murano.resources
+  sys: io.murano.system
+  apps: io.murano.apps
+
+
+Name: ZabbixServer
+
+Extends: std:Application
+
+Properties:
+  name:
+    Contract: $.string().notNull()
+  instance:
+    Contract: $.class(res:Instance).notNull()
+  database:
+    Contract: $.string().notNull()
+  username:
+    Contract: $.string().notNull()
+  password:
+    Contract: $.string().notNull()
+  hostname:
+    Contract: $.string().notNull()
+
+Workflow:
+  initialize:
+    Body:
+      - $.environment: $.find(std:Environment).require()
+
+  deploy:
+    Body:
+      - $.environment.reporter.report($this, 'Test Mesage')
+
+  run:
+    Body:
+      - $.environment.reporter.report($this, 'Creating VM for Zabbix Server')
+      - $securityGroupIngress:
+          - ToPort: 10051
+            FromPort: 10051
+            IpProtocol: tcp
+            External: True
+      - $.environment.securityGroupManager.addGroupIngress($securityGroupIngress)
+      - $.instance.deploy()
+      - $resources: new(sys:Resources)
+
+      - $template: $resources.yaml('DeployZabbixServer.template').bind(dict(
+           database => $.database,
+           username => $.username,
+           password => $.password,
+           hostname => $.hostname
+          ))
+      - $.environment.reporter.report($this, 'Instance is created. Deploying Zabbix Server')
+      - $.instance.agent.call($template, $resources)
+
+      - $.environment.reporter.report($this, 'Running at http://' + $.instance.floatingIpAddress + '/zabbix')
